@@ -26,7 +26,7 @@ from scripts.prepare_alpaca import generate_prompt
 
 
 instruction_tuning = True
-eval_interval = 5
+eval_interval = 100
 save_interval = 100
 eval_iters = 100
 log_interval = 100
