@@ -12,7 +12,7 @@ import time
 import lightning as L
 import numpy as np
 import torch
-from pytorch_lightning.loggers import WandbLogger
+import wandb
 
 # support running without installing as a package
 wd = Path(__file__).parent.parent.resolve()
@@ -26,10 +26,10 @@ from scripts.prepare_alpaca import generate_prompt
 
 
 instruction_tuning = True
-eval_interval = 100
+eval_interval = 5
 save_interval = 100
 eval_iters = 100
-log_interval = 1
+log_interval = 100
 
 # Hyperparameters
 learning_rate = 3e-4
@@ -44,6 +44,25 @@ lora_r = 8
 lora_alpha = 16
 lora_dropout = 0.05
 warmup_iters = 100
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="open-llama-alpaca-lora-7b",
+    
+    # track hyperparameters and run metadata
+    config={
+    "learning_rate": learning_rate,
+    "architecture": "lora",
+    "dataset": "alpaca",
+    "batch_size": batch_size,
+    "max_iters": max_iters,
+    "max_seq_length": max_seq_length,
+    "lora_r": lora_r,
+    "lora_alpha": lora_alpha,
+    "lora_dropout": lora_dropout,
+    "warmup_iters": warmup_iters
+    }
+)
 
 
 def main(
@@ -118,10 +137,12 @@ def train(
             optimizer.step()
             optimizer.zero_grad()
             step_count += 1
-                
+            wandb.log({"train": {"loss": loss.item()}}, step=step_count)
+
             if step_count % eval_interval == 0:
                 val_loss = validate(fabric, model, val_data, tokenizer_path)
                 fabric.print(f"step {iter_num}: val loss {val_loss:.4f}")
+                wandb.log({"val": {"loss": val_loss}}, step=step_count)
                 fabric.barrier()
 
             if step_count % save_interval == 0:
@@ -133,7 +154,7 @@ def train(
 
         dt = time.time() - t0
         if iter_num % log_interval == 0:
-            fabric.print(f"iter {iter_num}: loss {loss.item():.4f}, time: {dt*1000:.2f}ms")
+            fabric.print(f"iter {iter_num}: loss {loss.item():.4f}, time: {dt*1000:.2f}ms")        
 
 
 def generate_response(model, instruction, tokenizer_path):
