@@ -12,6 +12,7 @@ import time
 import lightning as L
 import numpy as np
 import torch
+from pytorch_lightning.loggers import WandbLogger
 
 # support running without installing as a package
 wd = Path(__file__).parent.parent.resolve()
