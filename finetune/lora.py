@@ -102,7 +102,10 @@ def main(
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     model, optimizer = fabric.setup(model, optimizer)
-    train(fabric, model, optimizer, train_data, val_data, tokenizer_path, out_dir, 
+    # needed only to predict a validation sample example
+    tokenizer = Tokenizer(tokenizer_path)
+    
+    train(fabric, model, optimizer, train_data, val_data, tokenizer, out_dir, 
           max_iters, warmup_iters, learning_rate, gradient_accumulation_iters, example_instruction, instruction_tuning, 
           max_seq_length, micro_batch_size, logging_params)
 
@@ -117,7 +120,7 @@ def train(
     optimizer: torch.optim.Optimizer,
     train_data: np.ndarray,
     val_data: np.ndarray,
-    tokenizer_path: str,
+    tokenizer: Tokenizer,
     out_dir: str,
     max_iters: int,
     warmup_iters: int,
@@ -158,7 +161,7 @@ def train(
             wandb.log({"train": {"loss": loss.item()}}, step=step_count)
 
             if step_count % logging_params["eval_interval"] == 0:
-                val_loss = validate(fabric, model, val_data, tokenizer_path, example_instruction, instruction_tuning, max_seq_length, micro_batch_size, logging_params)
+                val_loss = validate(fabric, model, val_data, tokenizer, example_instruction, instruction_tuning, max_seq_length, micro_batch_size, logging_params)
                 fabric.print(f"step {iter_num}: val loss {val_loss:.4f}")
                 wandb.log({"val": {"loss": val_loss}}, step=step_count)
                 fabric.barrier()
@@ -177,10 +180,9 @@ def train(
 
 def generate_response(model: torch.nn.Module, 
                         instruction: str,
-                        tokenizer_path: str,
+                        tokenizer: Tokenizer,
                         instruction_tuning: bool,
-                        max_seq_length: int) -> str:
-    tokenizer = Tokenizer(tokenizer_path)
+                        max_seq_length: int) -> str:    
     sample = {"instruction": instruction, "input": ""}
     prompt = instruction
     if instruction_tuning:
@@ -201,7 +203,7 @@ def generate_response(model: torch.nn.Module,
 def validate(fabric: L.Fabric, 
              model: torch.nn.Module, 
              val_data: np.ndarray, 
-             tokenizer_path: str, 
+             tokenizer: Tokenizer, 
              example_instruction: str, 
              instruction_tuning: bool, 
              max_seq_length: int,
@@ -220,7 +222,7 @@ def validate(fabric: L.Fabric,
     # produce an example:
     instruction = example_instruction
     
-    output = generate_response(model, instruction, tokenizer_path, instruction_tuning, max_seq_length)
+    output = generate_response(model, instruction, tokenizer, instruction_tuning, max_seq_length)
     fabric.print(instruction)
     fabric.print(output)
 
