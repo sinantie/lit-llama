@@ -1,0 +1,21 @@
+instruction_tuning: false
+eval_interval: 100
+save_interval: 100
+eval_iters: 100
+log_interval: 100
+learning_rate: 0.0003
+batch_size: 128
+micro_batch_size: 4
+weight_decay: 0.0
+max_seq_length: 256
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+warmup_iters: 100
+project_name: open-llama-opengpt-single_shot-qa-lora-7b
+train_dataset_dir: data/opengpt-single_shot-qa/train.pt
+val_dataset_dir: data/opengpt-single_shot-qa/test.pt
+pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
+tokenizer_path: checkpoints/lit-llama/tokenizer.model
+out_dir: out/lora/opengpt-single_shot-qa
+example_instruction: "<|user|> What is diabetes? <|eos|> <|ai|>"

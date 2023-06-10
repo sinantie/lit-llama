@@ -23,55 +23,62 @@ from lit_llama.lora import mark_only_lora_as_trainable, lora, lora_state_dict
 from lit_llama.model import LLaMA, LLaMAConfig
 from lit_llama.tokenizer import Tokenizer
 from scripts.prepare_alpaca import generate_prompt
-
-
-instruction_tuning = True
-eval_interval = 100
-save_interval = 100
-eval_iters = 100
-log_interval = 100
-
-# Hyperparameters
-learning_rate = 3e-4
-batch_size = 128
-micro_batch_size = 4
-gradient_accumulation_iters = batch_size // micro_batch_size
-assert gradient_accumulation_iters > 0
-max_iters = 50000 * 3 // micro_batch_size
-weight_decay = 0.0
-max_seq_length = 256  # see scripts/prepare_alpaca.py
-lora_r = 8
-lora_alpha = 16
-lora_dropout = 0.05
-warmup_iters = 100
-
-wandb.init(
-    # set the wandb project where this run will be logged
-    project="open-llama-alpaca-lora-7b",
     
-    # track hyperparameters and run metadata
-    config={
-    "learning_rate": learning_rate,
-    "architecture": "lora",
-    "dataset": "alpaca",
-    "batch_size": batch_size,
-    "max_iters": max_iters,
-    "max_seq_length": max_seq_length,
-    "lora_r": lora_r,
-    "lora_alpha": lora_alpha,
-    "lora_dropout": lora_dropout,
-    "warmup_iters": warmup_iters
-    }
-)
-
-
 def main(
-    data_dir: str = "data/alpaca", 
+    instruction_tuning: bool = True, # set to true for instruction-style examples; only used for validation purposes
+    # logging parameters
+    eval_interval: int = 100,
+    save_interval: int = 100,
+    eval_iters: int = 100,
+    log_interval: int = 100,
+    # Hyperparameters
+    learning_rate: float = 3e-4,
+    batch_size: int = 128,
+    micro_batch_size: int = 4,    
+    weight_decay: float = 0.0,
+    max_seq_length: int = 256,  # see scripts/prepare_alpaca.py
+    lora_r: int = 8,
+    lora_alpha: int = 16,
+    lora_dropout: float = 0.05,
+    warmup_iters: int = 100,
+    # project paths etc
+    project_name: str = "open-llama-alpaca-lora-7b",
+    train_dataset_dir: str = "data/alpaca/train.pt", 
+    val_dataset_dir: str = "data/alpaca/test.pt", 
     pretrained_path: str = "checkpoints/lit-llama/7B/lit-llama.pth",
     tokenizer_path: str = "checkpoints/lit-llama/tokenizer.model",
     out_dir: str = "out/lora/alpaca",
+    example_instruction: str = "Recommend a movie for me to watch during the weekend and explain the reason.",
 ):
-
+    gradient_accumulation_iters = batch_size // micro_batch_size    
+    assert gradient_accumulation_iters > 0
+    max_iters = 50000 * 3 // micro_batch_size
+    
+    logging_params = {
+        "eval_interval": eval_interval,
+        "save_interval": save_interval,
+        "eval_iters": eval_iters,
+        "log_interval": log_interval,
+    }
+    
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project=project_name,
+        
+        # track hyperparameters and run metadata
+        config={
+        "learning_rate": learning_rate,
+        "architecture": "lora",
+        "dataset": train_dataset_dir,
+        "batch_size": batch_size,
+        "max_iters": max_iters,
+        "max_seq_length": max_seq_length,
+        "lora_r": lora_r,
+        "lora_alpha": lora_alpha,
+        "lora_dropout": lora_dropout,
+        "warmup_iters": warmup_iters
+        }
+    )
     fabric = L.Fabric(accelerator="cuda", devices=1, precision="bf16-true")
     fabric.launch()
     fabric.seed_everything(1337 + fabric.global_rank)
@@ -79,7 +86,7 @@ def main(
     if fabric.global_rank == 0:
         os.makedirs(out_dir, exist_ok=True)
 
-    train_data, val_data = load_datasets(data_dir=data_dir)
+    train_data, val_data = load_datasets(train_dataset_dir=train_dataset_dir, val_dataset_dir=val_dataset_dir)
 
     config = LLaMAConfig.from_name("7B")
     config.block_size = max_seq_length
@@ -95,7 +102,9 @@ def main(
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     model, optimizer = fabric.setup(model, optimizer)
-    train(fabric, model, optimizer, train_data, val_data, tokenizer_path, out_dir)
+    train(fabric, model, optimizer, train_data, val_data, tokenizer_path, out_dir, 
+          max_iters, warmup_iters, learning_rate, gradient_accumulation_iters, example_instruction, instruction_tuning, 
+          max_seq_length, micro_batch_size, logging_params)
 
     # Save the final LoRA checkpoint at the end of training
     checkpoint = lora_state_dict(model)
@@ -110,6 +119,15 @@ def train(
     val_data: np.ndarray,
     tokenizer_path: str,
     out_dir: str,
+    max_iters: int,
+    warmup_iters: int,
+    learning_rate: float,
+    gradient_accumulation_iters: int,
+    example_instruction: str,
+    instruction_tuning: bool, 
+    max_seq_length: int, 
+    micro_batch_size: int,
+    logging_params: dict
 ) -> None:
     """The training loop.
 
@@ -127,7 +145,7 @@ def train(
 
         t0 = time.time()
 
-        input_ids, targets = get_batch(fabric, train_data)
+        input_ids, targets = get_batch(fabric, train_data, micro_batch_size)
         with fabric.no_backward_sync(model, enabled=((iter_num + 1) % gradient_accumulation_iters != 0)):
             logits = model(input_ids)
             loss = loss_fn(logits, targets)
@@ -139,13 +157,13 @@ def train(
             step_count += 1
             wandb.log({"train": {"loss": loss.item()}}, step=step_count)
 
-            if step_count % eval_interval == 0:
-                val_loss = validate(fabric, model, val_data, tokenizer_path)
+            if step_count % logging_params["eval_interval"] == 0:
+                val_loss = validate(fabric, model, val_data, tokenizer_path, example_instruction, instruction_tuning, max_seq_length, micro_batch_size, logging_params)
                 fabric.print(f"step {iter_num}: val loss {val_loss:.4f}")
                 wandb.log({"val": {"loss": val_loss}}, step=step_count)
                 fabric.barrier()
 
-            if step_count % save_interval == 0:
+            if step_count % logging_params["save_interval"] == 0:
                 print(f"Saving LoRA weights to {out_dir}")
                 # We are only saving the LoRA weights
                 # TODO: Provide a function/script to merge the LoRA weights with pretrained weights
@@ -153,11 +171,15 @@ def train(
                 fabric.save(os.path.join(out_dir, f"iter-{iter_num:06d}-ckpt.pth"), checkpoint)
 
         dt = time.time() - t0
-        if iter_num % log_interval == 0:
+        if iter_num % logging_params["log_interval"] == 0:
             fabric.print(f"iter {iter_num}: loss {loss.item():.4f}, time: {dt*1000:.2f}ms")        
 
 
-def generate_response(model, instruction, tokenizer_path):
+def generate_response(model: torch.nn.Module, 
+                        instruction: str,
+                        tokenizer_path: str,
+                        instruction_tuning: bool,
+                        max_seq_length: int) -> str:
     tokenizer = Tokenizer(tokenizer_path)
     sample = {"instruction": instruction, "input": ""}
     prompt = instruction
@@ -176,21 +198,29 @@ def generate_response(model, instruction, tokenizer_path):
 
 
 @torch.no_grad()
-def validate(fabric: L.Fabric, model: torch.nn.Module, val_data: np.ndarray, tokenizer_path: str) -> torch.Tensor:
+def validate(fabric: L.Fabric, 
+             model: torch.nn.Module, 
+             val_data: np.ndarray, 
+             tokenizer_path: str, 
+             example_instruction: str, 
+             instruction_tuning: bool, 
+             max_seq_length: int,
+             micro_batch_size: int,
+             logging_params: dict) -> torch.Tensor:
     fabric.print("Validating ...")
     model.eval()
-    losses = torch.zeros(eval_iters)
-    for k in range(eval_iters):
-        input_ids, targets = get_batch(fabric, val_data)
+    losses = torch.zeros(logging_params["eval_iters"])
+    for k in range(logging_params["eval_iters"]):
+        input_ids, targets = get_batch(fabric, val_data, micro_batch_size)
         logits = model(input_ids)
         loss = loss_fn(logits, targets)
         losses[k] = loss.item()
     out = losses.mean()
 
     # produce an example:
-    instruction = "Recommend a movie for me to watch during the weekend and explain the reason."
+    instruction = example_instruction
     
-    output = generate_response(model, instruction, tokenizer_path)
+    output = generate_response(model, instruction, tokenizer_path, instruction_tuning, max_seq_length)
     fabric.print(instruction)
     fabric.print(output)
 
@@ -205,7 +235,7 @@ def loss_fn(logits, targets):
     return loss
     
 
-def get_batch(fabric: L.Fabric, data: list):
+def get_batch(fabric: L.Fabric, data: list, micro_batch_size: int):
     ix = torch.randint(len(data), (micro_batch_size,))
 
     input_ids = [data[i]["input_ids"].type(torch.int64) for i in ix]
@@ -224,9 +254,9 @@ def get_batch(fabric: L.Fabric, data: list):
     return x, y
 
 
-def load_datasets(data_dir):
-    train_data = torch.load(os.path.join(data_dir, "train.pt"))
-    val_data = torch.load(os.path.join(data_dir, "test.pt"))
+def load_datasets(train_dataset_dir: str, val_dataset_dir: str):
+    train_data = torch.load(train_dataset_dir)
+    val_data = torch.load(val_dataset_dir)
     return train_data, val_data
 
 

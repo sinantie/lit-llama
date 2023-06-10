@@ -1,0 +1,22 @@
+instruction_tuning: true
+eval_interval: 100
+save_interval: 100
+eval_iters: 100
+log_interval: 100
+learning_rate: 0.0003
+batch_size: 128
+micro_batch_size: 4
+weight_decay: 0.0
+max_seq_length: 256
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+warmup_iters: 100
+project_name: open-llama-alpaca-lora-7b
+train_dataset_dir: data/alpaca/train.pt
+val_dataset_dir: data/alpaca/test.pt
+pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
+tokenizer_path: checkpoints/lit-llama/tokenizer.model
+out_dir: out/lora/alpaca
+example_instruction: Recommend a movie for me to watch during the weekend and explain
+  the reason.
