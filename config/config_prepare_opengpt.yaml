@@ -1,0 +1,9 @@
+destination_path: data/opengpt-single_shot-qa
+tokenizer_path: checkpoints/lit-llama/tokenizer.model
+test_split_size: 2000
+max_seq_length: 256
+seed: 42
+mask_inputs: true
+partitions_to_include:
+- single_shot-qa
+split_conversations_to_examples: false
