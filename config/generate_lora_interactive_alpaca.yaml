@@ -1,0 +1,12 @@
+lora_path: out/lora/alpaca/lit-llama-lora-finetuned.pth
+pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
+tokenizer_path: checkpoints/lit-llama/tokenizer.model
+quantize: null
+max_new_tokens: 100
+top_k: 200
+temperature: 0.8
+instruction_tuning: true
+special_tokens: 
+  
+server_name: 0.0.0.0
+share_gradio: false
