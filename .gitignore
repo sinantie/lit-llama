@@ -12,6 +12,8 @@ checkpoints
 out
 !data/shakespeare/prepare.py
 wandb
+# created by slurm
+srun.out
 
 # downloaded by our tests
 original_model.py
