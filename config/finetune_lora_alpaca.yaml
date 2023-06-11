@@ -18,5 +18,5 @@ val_dataset_dir: data/alpaca/test.pt
 pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
 out_dir: out/lora/alpaca
-example_instruction: Recommend a movie for me to watch during the weekend and explain
-  the reason.
+example_instruction: Recommend a movie for me to watch during the weekend and explain the reason.
+wandb_logging: True

@@ -36,7 +36,7 @@ DATA_FILES = [
                   "filename": "prepared_generated_data_for_medical_tasks.csv"
               }
               ]
-IGNORE_INDEX = -100
+IGNORE_INDEX = -1
 
 dataset_stats = {
         "total_context_tokens": 0,

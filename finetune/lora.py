@@ -49,6 +49,7 @@ def main(
     tokenizer_path: str = "checkpoints/lit-llama/tokenizer.model",
     out_dir: str = "out/lora/alpaca",
     example_instruction: str = "Recommend a movie for me to watch during the weekend and explain the reason.",
+    wandb_logging: bool = False
 ):
     gradient_accumulation_iters = batch_size // micro_batch_size    
     assert gradient_accumulation_iters > 0
@@ -61,24 +62,25 @@ def main(
         "log_interval": log_interval,
     }
     
-    wandb.init(
-        # set the wandb project where this run will be logged
-        project=project_name,
-        
-        # track hyperparameters and run metadata
-        config={
-        "learning_rate": learning_rate,
-        "architecture": "lora",
-        "dataset": train_dataset_dir,
-        "batch_size": batch_size,
-        "max_iters": max_iters,
-        "max_seq_length": max_seq_length,
-        "lora_r": lora_r,
-        "lora_alpha": lora_alpha,
-        "lora_dropout": lora_dropout,
-        "warmup_iters": warmup_iters
-        }
-    )
+    if wandb_logging:
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project=project_name,
+            
+            # track hyperparameters and run metadata
+            config={
+            "learning_rate": learning_rate,
+            "architecture": "lora",
+            "dataset": train_dataset_dir,
+            "batch_size": batch_size,
+            "max_iters": max_iters,
+            "max_seq_length": max_seq_length,
+            "lora_r": lora_r,
+            "lora_alpha": lora_alpha,
+            "lora_dropout": lora_dropout,
+            "warmup_iters": warmup_iters
+            }
+        )
     fabric = L.Fabric(accelerator="cuda", devices=1, precision="bf16-true")
     fabric.launch()
     fabric.seed_everything(1337 + fabric.global_rank)
@@ -149,9 +151,9 @@ def train(
         t0 = time.time()
 
         input_ids, targets = get_batch(fabric, train_data, micro_batch_size)
-        with fabric.no_backward_sync(model, enabled=((iter_num + 1) % gradient_accumulation_iters != 0)):
+        with fabric.no_backward_sync(model, enabled=((iter_num + 1) % gradient_accumulation_iters != 0)):            
             logits = model(input_ids)
-            loss = loss_fn(logits, targets)
+            loss = loss_fn(logits, targets)            
             fabric.backward(loss / gradient_accumulation_iters)
 
         if (iter_num + 1) % gradient_accumulation_iters == 0:

@@ -19,3 +19,4 @@ pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
 out_dir: out/lora/opengpt-single_shot-qa
 example_instruction: "<|user|> What is diabetes? <|eos|> <|ai|>"
+wandb_logging: True

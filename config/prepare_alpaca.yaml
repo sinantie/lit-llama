@@ -1,0 +1,7 @@
+destination_path: data/alpaca
+tokenizer_path: checkpoints/lit-llama/tokenizer.model
+test_split_size: 2000
+max_seq_length: 256
+seed: 42
+mask_inputs: true
+data_file_name: alpaca_data_cleaned_archive.json
