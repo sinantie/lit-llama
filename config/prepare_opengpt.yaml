@@ -1,9 +1,15 @@
-destination_path: data/opengpt-single_shot-qa
+destination_path: data/opengpt
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
 test_split_size: 2000
 max_seq_length: 256
 seed: 42
-mask_inputs: true
+mask_inputs: false
 partitions_to_include:
 - single_shot-qa
 split_conversations_to_examples: false
+special_tokens:
+  user: "<|user|>" # For chat like interactions we want to have a <user> and <ai> token
+  ai: "<|ai|>" # See above
+  eos: "<|eos|>" # End of stream (one question, or one answer, or one message)
+  eod: "<|eod|>" # End of document, or conversation - in other words the text that comes after this token is not related to the text before it
+  pad: "<|pad|>" # Padding 

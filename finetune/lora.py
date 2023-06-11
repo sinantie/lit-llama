@@ -185,7 +185,7 @@ def generate_response(model: torch.nn.Module,
                         max_seq_length: int) -> str:    
     sample = {"instruction": instruction, "input": ""}
     prompt = instruction
-    if instruction_tuning:
+    if instruction_tuning: # for alpaca-style instructions only
         prompt = generate_prompt(sample)
     encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
 

@@ -14,11 +14,6 @@ from torch.utils.data import random_split
 from lit_llama.tokenizer import Tokenizer
 from tqdm import tqdm
 
-TOKEN_USER = "<|user|>" # For chat like interactions we want to have a <user> and <ai> token
-TOKEN_AI =  "<|ai|>" # See above
-TOKEN_EOS = "<|eos|>" # End of stream (one question, or one answer, or one message)
-TOKEN_EOD =  "<|eod|>" # End of document, or conversation - in other words the text that comes after this token is not related to the text before it
-
 DATA_FILES = [
               {
                   "purpose": "debug",
@@ -57,8 +52,9 @@ def prepare(
     max_seq_length: int = 256,
     seed: int = 42,
     mask_inputs: bool = False,  # as in alpaca-lora
-    partitions_to_include: List[str] = ['single_shot-qa'], # options are  ['debug', 'single_shot-qa', 'conversational-qa']
+    partitions_to_include: list[str] = ['single_shot-qa'], # options are  ['debug', 'single_shot-qa', 'conversational-qa']
     split_conversations_to_examples: bool = False,
+    special_tokens: dict[str, str] = {"user": "<|user|>", "ai": "<|ai|>", "eos": "<|eos|>", "eod": "<|eod|>", "pad": "<|pad|>"}
     
 ) -> None:
     """Prepare the OpenGPT datasets (healthcare-related) for instruction tuning.
@@ -75,11 +71,14 @@ def prepare(
         mask_inputs:    Whether to ignore (apply mask) the input prompt (i.e., context with the <|user|> query, or conversation turns up to the final (but not including) <|ai|> response).
         partitions_to_include:  Which partitions of the dataset to include. Available options are ['debug', 'single_shot-qa' (DEFAULT), 'conversational-qa']
         split_conversations_to_examples:  Split a multi-turn conversational example into multiple individual ones incrementally.
+        special_tokens: list of special tokens used in the dataset to extend the tokenizer.
     """
     
     # TODO: If we don't have the Meta weights, where do we get the tokenizer from?
     tokenizer = Tokenizer(tokenizer_path)
-    
+    # if special_tokens:
+    #     add_tokens_to_tokenizer(special_tokens, tokenizer)
+        
     data = []
     destination_path.mkdir(parents=True, exist_ok=True)    
     filtered_data_files = [data_file for data_file in DATA_FILES if data_file['purpose'] in partitions_to_include]
@@ -103,16 +102,26 @@ def prepare(
     print(f"val has {len(test_set):,} samples")           
     
     print("Processing train split ...")
-    train_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs) for sample in tqdm(train_set)])]
+    train_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens) for sample in tqdm(train_set)])]
     torch.save(train_set, file_path.parent / "train.pt")
 
     print("Processing test split ...")
-    test_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs) for sample in tqdm(test_set)])]
+    test_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens) for sample in tqdm(test_set)])]
     torch.save(test_set, file_path.parent / "test.pt")
  
     total_processed_data = len(train_set) + len(test_set)
     print(f"Average words per context: {(dataset_stats['total_context_tokens'] / total_processed_data) :,}. Largest context: {dataset_stats['max_context_length']} words.")
     print(f"Average words per prompt: {(dataset_stats['total_prompt_tokens'] / total_processed_data) :,}. Largest prompt: {dataset_stats['max_prompt_length']} words.")    
+
+
+def add_tokens_to_tokenizer(special_tokens: dict[str, str], tokenizer: Tokenizer):
+    pass
+    # num_of_tokens = tokenizer.add_tokens(list(special_tokens.values()))
+    # print(f"Added {num_of_tokens} special tokens to the tokenizer")
+    # Set the eos and pad tokens properly 
+    # (commented out as we are letting the default pad from SentencePiece AND we want to treat <|eos|> inside a conversation differently from </s>)
+    # tokenizer.add_special_tokens({"eos_token": special_tokens["eos"], "pad_token": special_tokens["pad"]})
+    
 
 def download(url: str, file_path: Path):
     """Downloads the raw data file and saves it in the given destination."""
@@ -122,7 +131,7 @@ def download(url: str, file_path: Path):
         f.write(requests.get(url).text)
 
 
-def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_inputs: bool = True):
+def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_inputs: bool = True, special_tokens: dict[str, str] = []):
     """Processes a single sample.
     
     Each sample in the dataset consists of potentially multiple <|user|> queries and <|ai|> outputs delimited with <|eos|>; 
@@ -144,7 +153,7 @@ def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_in
     Finally, both the input prompt and the label get tokenized. If desired, all tokens
     in the label that correspond to the original input prompt get masked out (default).
     """
-    context, response = generate_prompt(example)
+    context, response = generate_prompt(example, special_tokens)
     """An error occurred in processing the example so don't continue"""
     if not context:
         return
@@ -162,6 +171,7 @@ def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_in
 
     return {**example, "input_ids": encoded_context_and_response, "input_ids_no_response": encoded_context, "labels": labels}
 
+
 def compute_stats(count_context_tokens: int, count_response_tokens: int) -> None:  
     max = dataset_stats['max_context_length']
     dataset_stats['max_context_length'] = count_context_tokens if max < count_context_tokens else max
@@ -172,15 +182,18 @@ def compute_stats(count_context_tokens: int, count_response_tokens: int) -> None
     dataset_stats['max_prompt_length'] = count_prompt_tokens if max < count_prompt_tokens else max
     dataset_stats['total_prompt_tokens'] += count_prompt_tokens    
 
+
 def tokenize(tokenizer: Tokenizer, string: str, max_length: int, eos=True) -> torch.Tensor:
     return tokenizer.encode(string, bos=True, eos=eos, max_length=max_length)
 
 
-def generate_prompt(example):
-    """Generates a prompt with the context of the dialogue or single user query and the response seperately."""    
-    text_split = example['text'].rsplit(TOKEN_AI, 1)
+def generate_prompt(example: dict, special_tokens: dict[str, str]):
+    """Generates a prompt with the context of the dialogue or single user query and the response seperately."""
+    assert 'ai' in special_tokens.keys()
+
+    text_split = example['text'].rsplit(special_tokens['ai'], 1)
     if len(text_split) > 1:
-        return text_split[0], TOKEN_AI + text_split[1]
+        return text_split[0], special_tokens['ai'] + text_split[1]
     else:    
         print(f"Invalid example! id: {example['raw_data_id']}\ntext: {example['text']}")
         return "", ""
