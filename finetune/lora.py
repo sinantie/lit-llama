@@ -168,12 +168,13 @@ def train(
                 wandb.log({"val": {"loss": val_loss}}, step=step_count)
                 fabric.barrier()
 
-            if step_count % logging_params["save_interval"] == 0:
-                print(f"Saving LoRA weights to {out_dir}")
+            if step_count % logging_params["save_interval"] == 0:                
                 # We are only saving the LoRA weights
                 # TODO: Provide a function/script to merge the LoRA weights with pretrained weights
                 checkpoint = lora_state_dict(model)
-                fabric.save(os.path.join(out_dir, f"iter-{iter_num:06d}-ckpt.pth"), checkpoint)
+                checkpoint_filenname = os.path.join(out_dir, f"iter-{iter_num:06d}-ckpt.pth")
+                print(f"Saving LoRA weights to {checkpoint_filenname}")
+                fabric.save(checkpoint_filenname, checkpoint)
 
         dt = time.time() - t0
         if iter_num % logging_params["log_interval"] == 0:
