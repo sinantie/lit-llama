@@ -173,7 +173,7 @@ def train(
                 # TODO: Provide a function/script to merge the LoRA weights with pretrained weights
                 checkpoint = lora_state_dict(model)
                 checkpoint_filenname = os.path.join(out_dir, f"iter-{iter_num:06d}-ckpt.pth")
-                print(f"Saving LoRA weights to {checkpoint_filenname}")
+                print(f"Saving LoRA weights to {checkpoint_filenname} with val loss={val_loss}")
                 fabric.save(checkpoint_filenname, checkpoint)
 
         dt = time.time() - t0

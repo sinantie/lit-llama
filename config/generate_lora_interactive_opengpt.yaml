@@ -2,7 +2,7 @@ lora_path: out/lora/opengpt-single_shot-qa/lit-llama-lora-finetuned.pth
 pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
 quantize: null
-max_new_tokens: 100
+max_new_tokens: 150
 top_k: 200
 temperature: 0.8
 instruction_tuning: false

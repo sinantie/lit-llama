@@ -88,48 +88,55 @@ def main(
     user_message = ""
     while user_message != 'quit':
         user_message = input('User: ')
-        generate_response(user_message, tokenizer, model, max_new_tokens, temperature, top_k, )
-    def generate_response(user_message: str,                 
-                 tokenizer: Tokenizer, 
-                 model: LLaMA,
-                 max_new_tokens: int, 
-                 temperature: float,
-                 top_k: int,
-                 special_tokens: dict[str, str],
-                 instruction_tuning: bool = False, 
-                 ):
-        if instruction_tuning:
-            if 'input:' in user_message:
-                instruction, user_input = user_message.split('input:')
-                sample = {"instruction": instruction, "input": user_input}
-            else:
-                sample = {"instruction": instruction}
-            prompt = generate_prompt(sample)
+        output, total_time = generate_response(user_message, tokenizer, model, max_new_tokens, temperature, top_k, 
+                                               special_tokens, instruction_tuning, fabric.device.type == "cuda", debug=False)
+        print(f"AI [{total_time:.02f} sec]: {output} ")
+
+def generate_response(user_message: str,                 
+                tokenizer: Tokenizer, 
+                model: LLaMA,
+                max_new_tokens: int, 
+                temperature: float,
+                top_k: int,
+                special_tokens: dict[str, str],
+                instruction_tuning: bool = False, 
+                use_cuda: bool = False,
+                debug: bool = False
+                ):
+    if instruction_tuning:
+        if 'input:' in user_message:
+            instruction, user_input = user_message.split('input:')
+            sample = {"instruction": instruction, "input": user_input}
         else:
-            prompt = f"{special_tokens['user']} {user_message} {special_tokens['eos']} {special_tokens['ai']}"
-        encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
+            sample = {"instruction": instruction}
+        prompt = generate_prompt(sample)
+    else:
+        prompt = f"{special_tokens['user']} {user_message} {special_tokens['eos']} {special_tokens['ai']}"
+    print(prompt)
+    encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
+        
+    t0 = time.perf_counter()
+    output = generate(
+        model,
+        idx=encoded,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        eos_id=tokenizer.eos_id
+    )
+    t = time.perf_counter() - t0
 
-        t0 = time.perf_counter()
-        output = generate(
-            model,
-            idx=encoded,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            eos_id=tokenizer.eos_id
-        )
-        t = time.perf_counter() - t0
+    output = tokenizer.decode(output)
+    if instruction_tuning:
+        output = output.split("### Response:")[1].strip()
+    else:            
+        output = output.rsplit(special_tokens["ai"], 1)[1]        
 
-        output = tokenizer.decode(output)
-        if instruction_tuning:
-            output = output.split("### Response:")[1].strip()
-        # else:            
-            # output = output.rsplit(special_tokens["eos"], 1)        
-
+    if debug:
         print(f"\n\nTime for inference: {t:.02f} sec total, {max_new_tokens / t:.02f} tokens/sec", file=sys.stderr)
-        if fabric.device.type == "cuda":
+        if use_cuda:
             print(f"Memory used: {torch.cuda.max_memory_reserved() / 1e9:.02f} GB", file=sys.stderr)
-        return output, t
+    return output, t
 
 
 if __name__ == "__main__":
