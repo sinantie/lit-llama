@@ -104,7 +104,7 @@ def generate_response(user_message: str,
                 debug: bool = False
                 ):
     if instruction_tuning:
-        if 'input:' in user_message:
+        if 'Input:' in user_message:
             instruction, user_input = user_message.split('Input:')
             sample = {"instruction": instruction, "input": user_input}
         else:
@@ -115,8 +115,6 @@ def generate_response(user_message: str,
     encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
     
     t0 = time.perf_counter()
-    import ipdb
-    ipdb.set_trace()
     output = generate(
         model,
         idx=encoded,
@@ -126,7 +124,7 @@ def generate_response(user_message: str,
         eos_id=tokenizer.eos_id
     )
     t = time.perf_counter() - t0
-
+    model.reset_cache()
     output = tokenizer.decode(output)
     if instruction_tuning:
         output = output.split("### Response:")[1].strip()
