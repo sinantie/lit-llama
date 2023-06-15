@@ -105,17 +105,18 @@ def generate_response(user_message: str,
                 ):
     if instruction_tuning:
         if 'input:' in user_message:
-            instruction, user_input = user_message.split('input:')
+            instruction, user_input = user_message.split('Input:')
             sample = {"instruction": instruction, "input": user_input}
         else:
             sample = {"instruction": instruction}
         prompt = generate_prompt(sample)
     else:
         prompt = f"{special_tokens['user']} {user_message} {special_tokens['eos']} {special_tokens['ai']}"
-    print(prompt)
     encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
-        
+    
     t0 = time.perf_counter()
+    import ipdb
+    ipdb.set_trace()
     output = generate(
         model,
         idx=encoded,

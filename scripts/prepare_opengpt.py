@@ -54,7 +54,10 @@ def prepare(
     mask_inputs: bool = False,  # as in alpaca-lora
     partitions_to_include: list[str] = ['single_shot-qa'], # options are  ['debug', 'single_shot-qa', 'conversational-qa']
     split_conversations_to_examples: bool = False,
-    special_tokens: dict[str, str] = {"user": "<|user|>", "ai": "<|ai|>", "eos": "<|eos|>", "eod": "<|eod|>", "pad": "<|pad|>"}
+    special_tokens_input: dict[str, str] = {"user": "<|user|>", "ai": "<|ai|>", "eos": "<|eos|>", "eod": "<|eod|>", "pad": "<|pad|>"},
+    special_tokens_output: dict[str, str] = {}
+
+
     
 ) -> None:
     """Prepare the OpenGPT datasets (healthcare-related) for instruction tuning.
@@ -102,11 +105,11 @@ def prepare(
     print(f"val has {len(test_set):,} samples")           
     
     print("Processing train split ...")
-    train_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens) for sample in tqdm(train_set)])]
+    train_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens_input, special_tokens_output) for sample in tqdm(train_set)])]
     torch.save(train_set, file_path.parent / "train.pt")
 
     print("Processing test split ...")
-    test_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens) for sample in tqdm(test_set)])]
+    test_set = [x for x in filter(None, [prepare_sample(sample, tokenizer, max_seq_length, mask_inputs, special_tokens_input, special_tokens_output) for sample in tqdm(test_set)])]
     torch.save(test_set, file_path.parent / "test.pt")
  
     total_processed_data = len(train_set) + len(test_set)
@@ -131,7 +134,9 @@ def download(url: str, file_path: Path):
         f.write(requests.get(url).text)
 
 
-def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_inputs: bool = True, special_tokens: dict[str, str] = []):
+def prepare_sample(example: dict, tokenizer: Tokenizer, 
+                   max_length: int, mask_inputs: bool = True, 
+                   special_tokens_input: dict[str, str] = [], special_tokens_output: dict[str, str] = []):
     """Processes a single sample.
     
     Each sample in the dataset consists of potentially multiple <|user|> queries and <|ai|> outputs delimited with <|eos|>; 
@@ -153,11 +158,11 @@ def prepare_sample(example: dict, tokenizer: Tokenizer, max_length: int, mask_in
     Finally, both the input prompt and the label get tokenized. If desired, all tokens
     in the label that correspond to the original input prompt get masked out (default).
     """
-    context, response = generate_prompt(example, special_tokens)
+    context, response = generate_prompt(example, special_tokens_input, special_tokens_output)
     """An error occurred in processing the example so don't continue"""
     if not context:
         return
-    context_and_response = context + response
+    context_and_response = f"{context} {response}"
     
     compute_stats(len(context.split()), len(response.split()))
     
@@ -187,13 +192,23 @@ def tokenize(tokenizer: Tokenizer, string: str, max_length: int, eos=True) -> to
     return tokenizer.encode(string, bos=True, eos=eos, max_length=max_length)
 
 
-def generate_prompt(example: dict, special_tokens: dict[str, str]):
+def generate_prompt(example: dict, special_tokens_input: dict[str, str], special_tokens_output: dict[str, str]):
     """Generates a prompt with the context of the dialogue or single user query and the response seperately."""
-    assert 'ai' in special_tokens.keys()
+    assert 'ai' in special_tokens_input.keys()
+    
+    prompt = example['text']
+    split_token = special_tokens_input['ai']
+    if special_tokens_output: # we are going to change the original <|user|>, <|ai|>, etc special tokens first
+        for special_in, special_out  in zip(special_tokens_input.values(), special_tokens_output.values()):
+            # prompt = prompt.replace(f"{special_in} ", f"{special_out} ")
+            prompt = prompt.replace(f"{special_in}", f"{special_out}")
+        split_token = special_tokens_output['ai']
+    
+    text_split = prompt.rsplit(split_token, 1)
+    if len(text_split) > 1:        
+        return text_split[0].strip(), f"{split_token} {text_split[1].strip()}"
+                
 
-    text_split = example['text'].rsplit(special_tokens['ai'], 1)
-    if len(text_split) > 1:
-        return text_split[0], special_tokens['ai'] + text_split[1]
     else:    
         print(f"Invalid example! id: {example['raw_data_id']}\ntext: {example['text']}")
         return "", ""
