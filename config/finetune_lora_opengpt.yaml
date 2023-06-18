@@ -13,10 +13,10 @@ lora_alpha: 16
 lora_dropout: 0.05
 warmup_iters: 100
 project_name: open-llama-opengpt-single_shot-qa-lora-7b
-train_dataset_dir: data/opengpt-single_shot-qa-no-special-toks/train.pt
-val_dataset_dir: data/opengpt-single_shot-qa-no-special-toks/test.pt
+train_dataset_dir: data/opengpt-single_shot-qa-no-special-toks-preamble/train.pt
+val_dataset_dir: data/opengpt-single_shot-qa-no-special-toks-preamble/test.pt
 pretrained_path: checkpoints/lit-llama/7B/lit-llama.pth
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
-out_dir: out/lora/opengpt-single_shot-qa-no-special-toks
-example_instruction: "Human: What is diabetes? ### AI:"
+out_dir: out/lora/opengpt-single_shot-qa-no-special-toks-preamble
+example_instruction: "The conversation between human and AI assistant.\n\nHuman: What is diabetes? ### AI:"
 wandb_logging: True

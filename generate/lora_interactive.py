@@ -15,7 +15,8 @@ from generate import generate
 from lit_llama import Tokenizer, LLaMA
 from lit_llama.lora import lora
 from lit_llama.utils import lazy_load, llama_model_lookup
-from scripts.prepare_alpaca import generate_prompt
+from scripts.prepare_alpaca import generate_prompt as alpaca_prompt
+from scripts.prepare_opengpt import generate_prompt as opengpt_prompt
 
 lora_r = 8
 lora_alpha = 16
@@ -109,9 +110,10 @@ def generate_response(user_message: str,
             sample = {"instruction": instruction, "input": user_input}
         else:
             sample = {"instruction": instruction}
-        prompt = generate_prompt(sample)
+        prompt = alpaca_prompt(sample)
     else:
-        prompt = f"{special_tokens['user']} {user_message} {special_tokens['eos']} {special_tokens['ai']}"
+        sample = f"{special_tokens['user']} {user_message} {special_tokens['eos']} {special_tokens['ai']}"
+        prompt, _ = opengpt_prompt({"text": sample}, special_tokens_input=special_tokens, special_tokens_output=None)    
     encoded = tokenizer.encode(prompt, bos=True, eos=False, device=model.device)
     
     t0 = time.perf_counter()
@@ -129,7 +131,7 @@ def generate_response(user_message: str,
     if instruction_tuning:
         output = output.split("### Response:")[1].strip()
     else:            
-        output = output.rsplit(special_tokens["ai"], 1)[1]        
+        output = output.rsplit(f"{special_tokens['eos']} {special_tokens['ai']}", 1)[1]        
 
     if debug:
         print(f"\n\nTime for inference: {t:.02f} sec total, {max_new_tokens / t:.02f} tokens/sec", file=sys.stderr)

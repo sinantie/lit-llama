@@ -1,4 +1,4 @@
-destination_path: data/opengpt-single_shot-qa-no-special-toks
+destination_path: data/opengpt-single_shot-qa-no-special-toks-preamble
 tokenizer_path: checkpoints/lit-llama/tokenizer.model
 test_split_size: 2000
 max_seq_length: 256

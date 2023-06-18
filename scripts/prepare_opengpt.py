@@ -199,16 +199,15 @@ def generate_prompt(example: dict, special_tokens_input: dict[str, str], special
     prompt = example['text']
     split_token = special_tokens_input['ai']
     if special_tokens_output: # we are going to change the original <|user|>, <|ai|>, etc special tokens first
-        for special_in, special_out  in zip(special_tokens_input.values(), special_tokens_output.values()):
-            # prompt = prompt.replace(f"{special_in} ", f"{special_out} ")
+        for special_in, special_out  in zip(special_tokens_input.values(), special_tokens_output.values()):        
             prompt = prompt.replace(f"{special_in}", f"{special_out}")
         split_token = special_tokens_output['ai']
     
+    # Adding the blaize meta-instruction at the top
+    prompt = "The conversation between human and AI assistant.\n\n" + prompt
     text_split = prompt.rsplit(split_token, 1)
     if len(text_split) > 1:        
-        return text_split[0].strip(), f"{split_token} {text_split[1].strip()}"
-                
-
+        return f"{text_split[0].strip()} {split_token}", text_split[1].strip()               
     else:    
         print(f"Invalid example! id: {example['raw_data_id']}\ntext: {example['text']}")
         return "", ""
