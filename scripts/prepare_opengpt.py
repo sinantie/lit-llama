@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 import csv
-from typing import List
 
 # support running without installing as a package
 wd = Path(__file__).parent.parent.resolve()
@@ -13,6 +12,7 @@ import requests
 from torch.utils.data import random_split
 from lit_llama.tokenizer import Tokenizer
 from tqdm import tqdm
+from datamodel.opengpt import Turn, Dialogue
 
 DATA_FILES = [
               {
@@ -191,26 +191,33 @@ def compute_stats(count_context_tokens: int, count_response_tokens: int) -> None
 def tokenize(tokenizer: Tokenizer, string: str, max_length: int, eos=True) -> torch.Tensor:
     return tokenizer.encode(string, bos=True, eos=eos, max_length=max_length)
 
+def parse_turn(raw_turn: str, special_token: str):
+    assert special_token in raw_turn, f"Special token {special_token} not found in raw turn: {raw_turn}"
+    return raw_turn.strip(f"{special_token} ")
+
+def parse_example(id: str, text: str, special_tokens_input: dict[str, str]):
+    """Reads in an example QA pair or dialogue in the original format from the CSV and store into a pydantic object"""
+    assert 'eos' in special_tokens_input.keys(), 'eos special token required!'
+
+    split_token = special_tokens_input['eos']
+    raw_turns = text.split(split_token)
+    turns = list[Turn]
+    if len(raw_turns) % 2 != 0:
+        print(f"Invalid example! Expected an even number of turns. Id: {id}\ntext: {text}")
+        turns.append(Turn("", ""))
+    else:
+        for i in range(0, len(raw_turns), 2): # process user and ai turns        
+            turns.append(Turn(parse_turn(raw_turns[i], special_tokens_input['user']), 
+                            parse_turn(raw_turns[i+1], special_tokens_input['ai'])))
+    return Dialogue(turns)
 
 def generate_prompt(example: dict, special_tokens_input: dict[str, str], special_tokens_output: dict[str, str]):
     """Generates a prompt with the context of the dialogue or single user query and the response seperately."""
-    assert 'ai' in special_tokens_input.keys()
-    
-    prompt = example['text']
-    split_token = special_tokens_input['ai']
-    if special_tokens_output: # we are going to change the original <|user|>, <|ai|>, etc special tokens first
-        for special_in, special_out  in zip(special_tokens_input.values(), special_tokens_output.values()):        
-            prompt = prompt.replace(f"{special_in}", f"{special_out}")
-        split_token = special_tokens_output['ai']
+    dialogue: Dialogue = parse_example(example['raw_data_id'], example['text'], special_tokens_input)
     
     # Adding the blaize meta-instruction at the top
-    prompt = "The conversation between human and AI assistant.\n\n" + prompt
-    text_split = prompt.rsplit(split_token, 1)
-    if len(text_split) > 1:        
-        return f"{text_split[0].strip()} {split_token}", text_split[1].strip()               
-    else:    
-        print(f"Invalid example! id: {example['raw_data_id']}\ntext: {example['text']}")
-        return "", ""
+    instruction = "The conversation between human and AI assistant.\n\n"
+    return dialogue.to_prompt(len(dialogue.turns), instruction, special_tokens_output['user', special_tokens_output['ai', special_tokens_output['eos']]])
     
 
 if __name__ == "__main__":
