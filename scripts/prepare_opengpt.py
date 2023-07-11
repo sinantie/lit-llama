@@ -198,18 +198,20 @@ def parse_turn(raw_turn: str, special_token: str):
 def parse_example(id: str, text: str, special_tokens_input: dict[str, str]):
     """Reads in an example QA pair or dialogue in the original format from the CSV and store into a pydantic object"""
     assert 'eos' in special_tokens_input.keys(), 'eos special token required!'
+    assert 'eod' in special_tokens_input.keys(), 'eod special token required!'
 
     split_token = special_tokens_input['eos']
     raw_turns = text.split(split_token)
+    assert raw_turns[-1].strip() == special_tokens_input['eod'], "Invalid example! Expected 'eod'. Id: {id}\ntext: {text}"
     turns = list[Turn]
-    if len(raw_turns) % 2 != 0:
+    if (len(raw_turns) - 1) % 2 != 0:
         print(f"Invalid example! Expected an even number of turns. Id: {id}\ntext: {text}")
-        turns.append(Turn("", ""))
+        turns.append(Turn(user="", ai=""))
     else:
         for i in range(0, len(raw_turns), 2): # process user and ai turns        
-            turns.append(Turn(parse_turn(raw_turns[i], special_tokens_input['user']), 
-                            parse_turn(raw_turns[i+1], special_tokens_input['ai'])))
-    return Dialogue(turns)
+            turns.append(Turn(user=parse_turn(raw_turns[i], special_tokens_input['user']), 
+                              ai=parse_turn(raw_turns[i+1], special_tokens_input['ai'])))
+    return Dialogue(turns=turns)
 
 def generate_prompt(example: dict, special_tokens_input: dict[str, str], special_tokens_output: dict[str, str]):
     """Generates a prompt with the context of the dialogue or single user query and the response seperately."""

@@ -5,7 +5,7 @@ max_seq_length: 256
 seed: 42
 mask_inputs: true
 partitions_to_include:
-- single_shot-qa
+- debug
 split_conversations_to_examples: false
 # tokens that are in the original raw datasets
 special_tokens_input:
