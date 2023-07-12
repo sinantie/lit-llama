@@ -109,7 +109,7 @@ def prepare_sample(example: Dict,
 
 def mc_accuracy(fabric: L.Fabric,
                 samples: List[Dict],
-                model: GPT,
+                model: LLaMA,
                 tokenizer: Tokenizer):
 
     correct = 0
