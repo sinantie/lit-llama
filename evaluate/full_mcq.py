@@ -17,7 +17,7 @@ wd = Path(__file__).parent.parent.resolve()
 sys.path.append(str(wd))
 
 from lit_llama import LLaMA, Tokenizer
-from lit_llama.utils import EmptyInitOnDevice, chunked_cross_entrop
+from lit_llama.utils import EmptyInitOnDevice, chunked_cross_entropy
 
 def write_results(checkpoint_path: Path,
                   data_file: Path,
@@ -152,7 +152,7 @@ def prepare_cont_tokens_sample(example: Dict,
 
 def mc_cont_tokens_accuracy(fabric: L.Fabric,
                             samples: List[Dict],
-                            model: GPT,
+                            model: LLaMA,
                             tokenizer: Tokenizer):
 
     correct = 0
@@ -199,8 +199,10 @@ def main(
     *,
     # compilation fails as it does not support torch.complex64 for RoPE
     # compile: bool = False,
+    data_file: Path = Path(f"checkpoints/stabilityai/stablelm-base-alpha-3b"),
     accelerator: str = "auto",
     checkpoint_path: Optional[Path] = None,
+    out_file: Path = None,
     tokenizer_path: Path = Path("checkpoints/lit-llama/tokenizer.model"),
     model_size: str = "7B",
     dtype: str = "float32",
@@ -258,7 +260,7 @@ def main(
     # acc = mc_cont_tokens_accuracy(fabric, samples, model, tokenizer)
 
     fabric.print(f"\nMultiple Choice Accuracy: {acc}\nDataset: {data_file}")
-    write_results(finetuned_path, data_file, out_file, acc)
+    write_results(checkpoint_path, data_file, out_file, acc)
 
 
 if __name__ == "__main__":

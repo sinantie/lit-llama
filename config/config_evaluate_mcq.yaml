@@ -1,0 +1,6 @@
+# [pubmedqa_mc_harness.jsonl, medmcqa_harness.jsonl, medqa_harness.jsonl]
+data_file: evaluation/pubmedqa_mc_harness.jsonl
+checkpoint_path: checkpoints/lit-pmc-llama/7B/lit-llama.pth
+out_file: evaluation/pmc-llama-7B/pumbed-qa.json
+tokenizer_path: checkpoints/lit-pmc-llama/tokenizer.model
+model_size: 7B
