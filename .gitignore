@@ -5,6 +5,7 @@ __pycache__
 .DS_Store
 *.egg-info
 build
+srun.out
 
 # data
 data
@@ -12,6 +13,7 @@ checkpoints
 out
 !data/shakespeare/prepare.py
 wandb
+evaluation/
 
 # downloaded by our tests
 original_model.py
