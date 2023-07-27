@@ -18,7 +18,7 @@ sys.path.append(str(wd))
 
 from lit_llama import LLaMA, Tokenizer
 from lit_llama.model import Block
-from lit_llama.utils import EmptyInitOnDevice, chunked_cross_entropy
+from lit_llama.utils import EmptyInitOnDevice, chunked_cross_entropy, quantization, lazy_load
 
 def write_results(checkpoint_path: Path,
                   data_file: Path,
@@ -209,7 +209,6 @@ def main(
     out_file: Path = None,
     tokenizer_path: Path = Path("checkpoints/lit-llama/tokenizer.model"),
     model_size: str = "7B",
-    dtype: str = "float32",
     quantize: Optional[str] = None,    
 ) -> None:
     """Generates text samples based on a pre-trained LLaMA model and tokenizer.
@@ -238,21 +237,29 @@ def main(
     fabric.seed_everything(1)
     fabric.launch()
     
-    dt = getattr(torch, dtype, None)
-    if not isinstance(dt, torch.dtype):
-        raise ValueError(f"{dtype} is not a valid dtype.")
-    dtype = dt
+    # with EmptyInitOnDevice(
+    #     device=fabric.device, dtype=dtype, quantization_mode=quantize
+    # ):
+    #     print("Loading model ...", file=sys.stderr)
+    #     t0 = time.time()
+    #     model = LLaMA.from_name(model_size)
+    #     checkpoint = torch.load(checkpoint_path)
+    #     model.load_state_dict(checkpoint)
+    #     print(f"Time to load model: {time.time() - t0:.02f} seconds.", file=sys.stderr)
 
-    with EmptyInitOnDevice(
-        device=fabric.device, dtype=dtype, quantization_mode=quantize
-    ):
-        print("Loading model ...", file=sys.stderr)
-        t0 = time.time()
+    fabric.print(f"Loading model ...", file=sys.stderr)
+    t0 = time.time()
+    with fabric.init_module(empty_init=True), quantization(quantize):
         model = LLaMA.from_name(model_size)
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint)
-        print(f"Time to load model: {time.time() - t0:.02f} seconds.", file=sys.stderr)
+    fabric.print(f"Time to instantiate model: {time.time() - t0:.02f} seconds.", file=sys.stderr)
 
+    t0 = time.time()
+
+    with lazy_load(checkpoint_path) as checkpoint:
+        model.load_state_dict(checkpoint.get("model", checkpoint), strict=quantize is None)
+        # model.load_state_dict(checkpoint, strict=False)
+    fabric.print(f"Time to load the model weights: {time.time() - t0:.02f} seconds.", file=sys.stderr)
+    
     model.eval()
 
     # if compile:
