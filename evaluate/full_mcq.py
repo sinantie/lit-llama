@@ -203,7 +203,7 @@ def main(
     data_file: Path = Path(f"checkpoints/stabilityai/stablelm-base-alpha-3b"),
     accelerator: str = "auto",
     strategy: str = "auto",
-    devices: int = 0,
+    devices: List = [0],
     precision: str = "bf16-true",
     checkpoint_path: Optional[Path] = None,
     out_file: Path = None,
@@ -233,7 +233,7 @@ def main(
     if strategy == "fsdp":
         auto_wrap_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={Block})
         strategy = FSDPStrategy(auto_wrap_policy=auto_wrap_policy, cpu_offload=False)
-    fabric = L.Fabric(devices=[devices], precision=precision, strategy=strategy)
+    fabric = L.Fabric(devices=devices, precision=precision, strategy=strategy)
     fabric.seed_everything(1)
     fabric.launch()
     
