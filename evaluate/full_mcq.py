@@ -17,6 +17,7 @@ wd = Path(__file__).parent.parent.resolve()
 sys.path.append(str(wd))
 
 from lit_llama import LLaMA, Tokenizer
+from lit_llama.model import Block
 from lit_llama.utils import EmptyInitOnDevice, chunked_cross_entropy
 
 def write_results(checkpoint_path: Path,
@@ -201,12 +202,15 @@ def main(
     # compile: bool = False,
     data_file: Path = Path(f"checkpoints/stabilityai/stablelm-base-alpha-3b"),
     accelerator: str = "auto",
+    strategy: str = "auto",
+    devices: int = 0,
+    precision: str = "bf16-true",
     checkpoint_path: Optional[Path] = None,
     out_file: Path = None,
     tokenizer_path: Path = Path("checkpoints/lit-llama/tokenizer.model"),
     model_size: str = "7B",
     dtype: str = "float32",
-    quantize: Optional[str] = None,
+    quantize: Optional[str] = None,    
 ) -> None:
     """Generates text samples based on a pre-trained LLaMA model and tokenizer.
 
@@ -227,8 +231,13 @@ def main(
     assert checkpoint_path.is_file()
     assert tokenizer_path.is_file()
 
-    fabric = L.Fabric(accelerator=accelerator, devices=1)
-
+    if strategy == "fsdp":
+        auto_wrap_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={Block})
+        strategy = FSDPStrategy(auto_wrap_policy=auto_wrap_policy, cpu_offload=False)
+    fabric = L.Fabric(devices=[devices], precision=precision, strategy=strategy)
+    fabric.seed_everything(1)
+    fabric.launch()
+    
     dt = getattr(torch, dtype, None)
     if not isinstance(dt, torch.dtype):
         raise ValueError(f"{dtype} is not a valid dtype.")
