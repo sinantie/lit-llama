@@ -4,5 +4,6 @@ checkpoint_path: checkpoints/lit-med-llama/13B/lit-llama.pth
 out_file: evaluation/med-llama-13B/medqa.json
 tokenizer_path: checkpoints/lit-med-llama/tokenizer.model
 model_size: 13B
-accelerator: cpu
+devices: [0,1]
+strategy: fsdp
 #quantize: llm.int8
