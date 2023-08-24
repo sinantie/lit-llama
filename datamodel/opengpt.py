@@ -23,7 +23,7 @@ class Dialogue(BaseModel):
         prompt = instruction
         for i in range(history_len - 1):
             prompt += f"{self.turns[i].to_string(user_token, ai_token, eos_token)}\n"        
-            last_user, last_ai = self.turns[-1].to_prompt(user_token, ai_token, eos_token)             
+        last_user, last_ai = self.turns[-1].to_prompt(user_token, ai_token, eos_token)             
         return f"{prompt}{last_user}", last_ai
         
     def to_string(self, instruction=""):
