@@ -21,10 +21,10 @@ class Dialogue(BaseModel):
 
     def to_prompt(self, history_len:int, instruction="", user_token="Human:", ai_token="AI:", eos_token="###"):
         prompt = instruction
-        for i in len(history_len) - 1:
-            prompt += f"{self.turns[i].to_string(user_token, ai_token, eos_token)}\n"
-        last_user, last_ai = self.turns[-1].to_prompt(user_token, ai_token, eos_token)
-        return f"{prompt}{last_user} {ai_token}", last_ai
+        for i in range(history_len - 1):
+            prompt += f"{self.turns[i].to_string(user_token, ai_token, eos_token)}\n"        
+            last_user, last_ai = self.turns[-1].to_prompt(user_token, ai_token, eos_token)             
+        return f"{prompt}{last_user}", last_ai
         
     def to_string(self, instruction=""):
          dialogue = '\n'.join([x.to_string() for x in self.turns])

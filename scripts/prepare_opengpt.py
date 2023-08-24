@@ -31,7 +31,7 @@ DATA_FILES = [
                   "filename": "prepared_generated_data_for_nhs_uk_conversations.csv"
               },
               {
-                  "purpose": "single_shot-qa",
+                  "purpose": "medical_tasks-qa",
                   "url": "https://raw.githubusercontent.com/CogStack/OpenGPT/main/data/medical_tasks_gpt4/prepared_generated_data_for_medical_tasks.csv",
                   "filename": "prepared_generated_data_for_medical_tasks.csv"
               }
@@ -43,6 +43,8 @@ dataset_stats = {
         "max_context_length": 0,
         "total_prompt_tokens": 0,
         "max_prompt_length": 0,
+        "skipped_examples": 0,
+        "skipped_turns": 0
     }
 
 def prepare(
@@ -52,7 +54,7 @@ def prepare(
     max_seq_length: int = 256,
     seed: int = 42,
     mask_inputs: bool = False,  # as in alpaca-lora
-    partitions_to_include: list[str] = ['single_shot-qa'], # options are  ['debug', 'single_shot-qa', 'conversational-qa']
+    partitions_to_include: list[str] = ['single_shot-qa'], # options are  ['debug', 'single_shot-qa', 'conversational-qa', 'medical-tasks-qa']
     split_conversations_to_examples: bool = False,
     special_tokens_input: dict[str, str] = {"user": "<|user|>", "ai": "<|ai|>", "eos": "<|eos|>", "eod": "<|eod|>", "pad": "<|pad|>"},
     special_tokens_output: dict[str, str] = {}
@@ -72,7 +74,7 @@ def prepare(
         max_seq_length: Maximum sequence length for the overall prompt (including the response).
         seed:   The default seed used for randomly splitting the datasets.
         mask_inputs:    Whether to ignore (apply mask) the input prompt (i.e., context with the <|user|> query, or conversation turns up to the final (but not including) <|ai|> response).
-        partitions_to_include:  Which partitions of the dataset to include. Available options are ['debug', 'single_shot-qa' (DEFAULT), 'conversational-qa']
+        partitions_to_include:  Which partitions of the dataset to include. Available options are ['debug', 'single_shot-qa' (DEFAULT), 'conversational-qa', 'medical-tasks-qa']
         split_conversations_to_examples:  Split a multi-turn conversational example into multiple individual ones incrementally.
         special_tokens: list of special tokens used in the dataset to extend the tokenizer.
     """
@@ -116,6 +118,8 @@ def prepare(
     print(f"Average words per context: {(dataset_stats['total_context_tokens'] / total_processed_data) :,}. Largest context: {dataset_stats['max_context_length']} words.")
     print(f"Average words per prompt: {(dataset_stats['total_prompt_tokens'] / total_processed_data) :,}. Largest prompt: {dataset_stats['max_prompt_length']} words.")    
 
+    print(f"Skipped examples: {dataset_stats['skipped_examples']}")
+    print(f"Skipped turns: {dataset_stats['skipped_turns']}")
 
 def add_tokens_to_tokenizer(special_tokens: dict[str, str], tokenizer: Tokenizer):
     pass
@@ -192,7 +196,9 @@ def tokenize(tokenizer: Tokenizer, string: str, max_length: int, eos=True) -> to
     return tokenizer.encode(string, bos=True, eos=eos, max_length=max_length)
 
 def parse_turn(raw_turn: str, special_token: str):
-    assert special_token in raw_turn, f"Special token {special_token} not found in raw turn: {raw_turn}"
+    if not special_token in raw_turn:
+        # print(f"Special token {special_token} not found in raw turn")
+        return None
     return raw_turn.strip(f"{special_token} ")
 
 def parse_example(id: str, text: str, special_tokens_input: dict[str, str]):
@@ -203,23 +209,38 @@ def parse_example(id: str, text: str, special_tokens_input: dict[str, str]):
     split_token = special_tokens_input['eos']
     raw_turns = text.split(split_token)
     assert raw_turns[-1].strip() == special_tokens_input['eod'], "Invalid example! Expected 'eod'. Id: {id}\ntext: {text}"
-    turns = list[Turn]
-    if (len(raw_turns) - 1) % 2 != 0:
-        print(f"Invalid example! Expected an even number of turns. Id: {id}\ntext: {text}")
-        turns.append(Turn(user="", ai=""))
-    else:
-        for i in range(0, len(raw_turns), 2): # process user and ai turns        
-            turns.append(Turn(user=parse_turn(raw_turns[i], special_tokens_input['user']), 
-                              ai=parse_turn(raw_turns[i+1], special_tokens_input['ai'])))
+    del raw_turns[-1] # we don't need the <|eod|> anymore
+    turns: list[Turn] = []
+    # if (len(raw_turns)) % 2 != 0:
+    #     print(f"Invalid example! Expected an even number of turns.")
+  
+    found_user: bool = False
+    for i in range(len(raw_turns)):
+        if not found_user:
+            user = parse_turn(raw_turns[i], special_tokens_input['user'])
+            found_user = user != None
+            if not found_user:
+                dataset_stats["skipped_turns"] += 1
+        elif i < len(raw_turns):                
+            ai = parse_turn(raw_turns[i], special_tokens_input['ai'])
+            if ai:
+                turns.append(Turn(user=user, ai=ai))
+                found_user = False
+            else:
+                dataset_stats["skipped_turns"] += 1                
+
     return Dialogue(turns=turns)
 
 def generate_prompt(example: dict, special_tokens_input: dict[str, str], special_tokens_output: dict[str, str]):
     """Generates a prompt with the context of the dialogue or single user query and the response seperately."""
     dialogue: Dialogue = parse_example(example['raw_data_id'], example['text'], special_tokens_input)
     
+    if len(dialogue.turns) == 0:
+        dataset_stats["skipped_examples"] += 1
+        return None, None
     # Adding the blaize meta-instruction at the top
     instruction = "The conversation between human and AI assistant.\n\n"
-    return dialogue.to_prompt(len(dialogue.turns), instruction, special_tokens_output['user', special_tokens_output['ai', special_tokens_output['eos']]])
+    return dialogue.to_prompt(len(dialogue.turns), instruction, special_tokens_output['user'], special_tokens_output['ai'], special_tokens_output['eos'])
     
 
 if __name__ == "__main__":
